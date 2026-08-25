@@ -123,48 +123,72 @@ def _tile_coords(
 
 
 class TestComputeNdvi:
-    def test_basic_formula(self) -> None:
-        # GIVEN red band is 100 and NIR band is 200 for all pixels
-        red = numpy.full((4, 4), 100, dtype=numpy.float32)
-        nir = numpy.full((4, 4), 200, dtype=numpy.float32)
+    @pytest.mark.parametrize(
+        ("red_val", "nir_val", "expected", "because"),
+        [
+            pytest.param(
+                100,
+                200,
+                numpy.float32((200 - 100) / (200 + 100)),
+                "red band is 100 and NIR band is 200 for all pixels",
+                id="positive",
+            ),
+            pytest.param(
+                200,
+                100,
+                numpy.float32((100 - 200) / (100 + 200)),
+                "red band is 200 and NIR band is 100 (more red than NIR)",
+                id="negative",
+            ),
+        ],
+    )
+    def test_uniform_formula(
+        self,
+        red_val: int,
+        nir_val: int,
+        expected: numpy.float32,
+        because: str,
+    ) -> None:
+        # GIVEN uniform red and NIR bands where {because}
+        red = numpy.full((4, 4), red_val, dtype=numpy.float32)
+        nir = numpy.full((4, 4), nir_val, dtype=numpy.float32)
 
         # WHEN NDVI is computed
         ndvi = ndvi_tool.compute_ndvi(red, nir)
 
-        # THEN the result is (200-100)/(200+100) ≈ 0.333 everywhere
+        # THEN the result is (nir-red)/(nir+red) everywhere
         assert ndvi is not None
-        expected = numpy.float32((200 - 100) / (200 + 100))
         assert numpy.allclose(ndvi, expected)
 
-    def test_negative_ndvi(self) -> None:
-        # GIVEN red band is 200 and NIR band is 100 (more red than NIR)
-        red = numpy.full((4, 4), 200, dtype=numpy.float32)
-        nir = numpy.full((4, 4), 100, dtype=numpy.float32)
-
+    @pytest.mark.parametrize(
+        ("red", "nir", "because"),
+        [
+            pytest.param(
+                numpy.zeros((4, 4), dtype=numpy.float32),
+                numpy.zeros((4, 4), dtype=numpy.float32),
+                "both red and NIR bands are entirely NODATA (0)",
+                id="all-nodata",
+            ),
+            pytest.param(
+                numpy.zeros((4, 4), dtype=numpy.float32),
+                numpy.full((4, 4), 200, dtype=numpy.float32),
+                "the red band is entirely NODATA, masking every pixel",
+                id="red-band-all-nodata",
+            ),
+            pytest.param(
+                numpy.full((2, 2), -50.0, dtype=numpy.float32),
+                numpy.full((2, 2), 50.0, dtype=numpy.float32),
+                "nir+red==0 produces inf/nan, masked to NODATA everywhere",
+                id="division-by-zero",
+            ),
+        ],
+    )
+    def test_returns_none(
+        self, red: numpy.ndarray, nir: numpy.ndarray, because: str
+    ) -> None:
+        # GIVEN red and NIR bands where {because}
         # WHEN NDVI is computed
-        ndvi = ndvi_tool.compute_ndvi(red, nir)
-
-        # THEN the result is (100-200)/(100+200) ≈ -0.333 everywhere
-        assert ndvi is not None
-        expected = numpy.float32((100 - 200) / (100 + 200))
-        assert numpy.allclose(ndvi, expected)
-
-    def test_all_nodata_returns_none(self) -> None:
-        # GIVEN both red and NIR bands are entirely NODATA (0)
-        red = numpy.zeros((4, 4), dtype=numpy.float32)
-        nir = numpy.zeros((4, 4), dtype=numpy.float32)
-
-        # WHEN NDVI is computed
-        # THEN None is returned because all pixels are NODATA
-        assert ndvi_tool.compute_ndvi(red, nir) is None
-
-    def test_red_band_all_nodata_returns_none(self) -> None:
-        # GIVEN red band is entirely NODATA but NIR has valid data
-        red = numpy.zeros((4, 4), dtype=numpy.float32)
-        nir = numpy.full((4, 4), 200, dtype=numpy.float32)
-
-        # WHEN NDVI is computed
-        # THEN None is returned because every pixel is masked by red NODATA
+        # THEN None is returned because every pixel is NODATA
         assert ndvi_tool.compute_ndvi(red, nir) is None
 
     def test_mixed_valid_and_invalid(self) -> None:
@@ -201,15 +225,6 @@ class TestComputeNdvi:
         # THEN the output array is float32
         assert ndvi is not None
         assert ndvi.dtype == numpy.float32
-
-    def test_division_by_zero_masked(self) -> None:
-        # GIVEN nir + red == 0 but neither equals NODATA, producing inf/nan
-        red = numpy.full((2, 2), -50.0, dtype=numpy.float32)
-        nir = numpy.full((2, 2), 50.0, dtype=numpy.float32)
-
-        # WHEN NDVI is computed
-        # THEN the non-finite result is masked to NODATA everywhere → None
-        assert ndvi_tool.compute_ndvi(red, nir) is None
 
     def test_extreme_ratio_stays_in_range(self) -> None:
         # GIVEN a very small red value and a very large NIR value
