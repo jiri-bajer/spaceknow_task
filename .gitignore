@@ -1,0 +1,4 @@
+*.png
+*.tiff
+__pycache__/*
+output/*
