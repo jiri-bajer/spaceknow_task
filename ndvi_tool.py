@@ -34,6 +34,7 @@ import dataclasses
 import os
 import pathlib
 import sys
+import warnings
 
 import mercantile
 import numpy
@@ -215,6 +216,15 @@ def process_file(
 
     mosaic_path = out_dir / f"{scene_id}_ndvi.tif"
     origin_transform = tile_transform(mercantile.Tile(min_x, min_y, zoom))
+
+    # Suppress NotGeoreferencedWarning: we pass src_transform explicitly to
+    # reproject, but GDAL's C code still checks the dataset handle and emits
+    # a false-positive warning.  Set before threads start (catch_warnings is
+    # not thread-safe on Python < 3.12).
+    warnings.filterwarnings(
+        "ignore", category=rasterio.errors.NotGeoreferencedWarning
+    )
+
     with (
         rasterio.open(
             fp=mosaic_path,
@@ -271,7 +281,6 @@ def process_file(
         save_preview(mosaic_path)
 
     return mosaic_path
-
 
 
 def save_preview(mosaic_path: pathlib.Path) -> None:
