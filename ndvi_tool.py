@@ -5,6 +5,7 @@
 #     "rasterio",
 #     "mercantile",
 #     "numpy",
+#     "pillow",
 # ]
 # ///
 """NDVI computation tool for multi-band GeoTIFF satellite imagery.
@@ -186,6 +187,7 @@ def process_file(
     path: str | pathlib.Path,
     out_dir: pathlib.Path,
     zoom: int,
+    preview: bool = False,
     workers: int = 1,
 ) -> pathlib.Path:
     """Process one GeoTIFF end-to-end: enumerate tiles → NDVI → mosaic.
@@ -264,9 +266,47 @@ def process_file(
 
     print(f"  {done}/{len(tiles)} tiles with data" + " " * 40)
     print(f"  Mosaic -> {mosaic_path}")
+
+    if preview:
+        save_preview(mosaic_path)
+
     return mosaic_path
 
 
+
+def save_preview(mosaic_path: pathlib.Path) -> None:
+    """Save a colorized PNG of an NDVI GeoTIFF for quick visual inspection.
+
+    Maps NDVI values to a blue (water) → tan (bare soil) → green
+    (vegetation) color ramp and downsamples large mosaics for speed.
+    """
+    from PIL import Image
+
+    with rasterio.open(mosaic_path) as src:
+        w, h = src.width, src.height
+        # Downsample if large
+        scale = min(1, 2000 / max(w, h))
+        data = src.read(1, out_shape=(int(h * scale), int(w * scale)))
+
+    valid = data != NODATA
+    ndvi = data
+
+    rgb = numpy.zeros((ndvi.shape[0], ndvi.shape[1], 3), dtype=numpy.uint8)
+    # Blue (water, NDVI<0) -> tan (bare soil, NDVI≈0) -> green (vegetation, NDVI>0.3)
+    rgb[..., 0] = numpy.where(
+        valid, numpy.interp(ndvi, [-1, 0, 0.3, 1], [60, 180, 120, 0]).clip(0, 255), 0
+    )
+    rgb[..., 1] = numpy.where(
+        valid, numpy.interp(ndvi, [-1, 0, 0.3, 1], [100, 160, 200, 60]).clip(0, 255), 0
+    )
+    rgb[..., 2] = numpy.where(
+        valid, numpy.interp(ndvi, [-1, 0, 0.3, 1], [200, 120, 40, 0]).clip(0, 255), 0
+    )
+    rgb[~valid] = [20, 20, 20]
+
+    out = mosaic_path.with_suffix(".preview.png")
+    Image.fromarray(rgb).save(out)
+    print(f"  Preview -> {out}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -280,6 +320,12 @@ if __name__ == "__main__":
         type=int,
         default=14,
         help="Slippy-map zoom level (default: 14, lower for fewer/larger tiles and testing)",
+    )
+    parser.add_argument(
+        "-p",
+        "--preview",
+        action="store_true",
+        help="Save a colorized PNG preview of the NDVI mosaic",
     )
     parser.add_argument(
         "-w",
@@ -300,7 +346,7 @@ if __name__ == "__main__":
     for path in args.inputs:
         print(f"Processing {path}...")
         try:
-            process_file(path, out_dir, args.zoom, workers=args.workers)
+            process_file(path, out_dir, args.zoom, args.preview, args.workers)
         except rasterio.errors.RasterioIOError as exc:
             print(f"  Error: cannot read {path}: {exc}", file=sys.stderr)
             sys.exit(1)

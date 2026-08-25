@@ -41,7 +41,7 @@ in the script header ([PEP 723](https://peps.python.org/pep-0723/)).
 environment setup or `pip install` needed.
 
 ```bash
-uv run ndvi_tool.py [-o OUTPUT_DIR] [-z ZOOM] [-w WORKERS] file1.tif [file2.tif ...]
+uv run ndvi_tool.py [-o OUTPUT_DIR] [-z ZOOM] [-w WORKERS] [-p] file1.tif [file2.tif ...]
 ```
 
 Options:
@@ -51,6 +51,7 @@ Options:
 | `-o, --output` | Output directory (default: `output`) |
 | `-z, --zoom` | Slippy-map zoom level (default: 14, lower for fewer/larger tiles) |
 | `-w, --workers` | Parallel threads for tile processing (default: CPU count) |
+| `-p, --preview` | Save a colorized PNG preview of the NDVI mosaic |
 
 Examples:
 
@@ -60,6 +61,9 @@ uv run ndvi_tool.py -z 14 scene.tif
 
 # Multiple files, custom output dir, 4 threads
 uv run ndvi_tool.py -o results -w 4 scene_a.tif scene_b.tif
+
+# With PNG preview
+uv run ndvi_tool.py -p scene.tif
 ```
 
 ## Tests
@@ -79,6 +83,8 @@ in an isolated environment managed by `uv`.
 - [mercantile](https://pypi.org/project/mercantile/) — slippy-map tile
   coordinate math (tile enumeration, tile bounds)
 - numpy — NDVI arithmetic (SIMD-accelerated element-wise operations)
+- [pillow](https://pillow.readthedocs.io/) — PNG preview generation
+  (optional, only used with `--preview`)
 
 ## Further reading
 
