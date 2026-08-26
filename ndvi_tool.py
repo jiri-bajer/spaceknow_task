@@ -51,6 +51,17 @@ BAND_RED = 3  # 1-based band index
 BAND_NIR = 4
 NODATA = 0  # Sentinel value marking "no data"/NULL
 
+# Preview PNG settings
+PREVIEW_MAX_DIM = 2000
+PREVIEW_NODATA_RGB = (20, 20, 20)
+
+# NDVI control points and their RGB colors for the preview ramp:
+#   water (NDVI=-1, blue) -> bare soil (NDVI=0, tan) -> vegetation (NDVI=0.3+, green)
+_NDVI_STOPS = [-1.0, 0.0, 0.3, 1.0]
+_RAMP_R = [60, 180, 120, 0]
+_RAMP_G = [100, 160, 200, 60]
+_RAMP_B = [200, 120, 40, 0]
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class NdviTile:
@@ -221,9 +232,7 @@ def process_file(
     # reproject, but GDAL's C code still checks the dataset handle and emits
     # a false-positive warning.  Set before threads start (catch_warnings is
     # not thread-safe on Python < 3.12).
-    warnings.filterwarnings(
-        "ignore", category=rasterio.errors.NotGeoreferencedWarning
-    )
+    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
     with (
         rasterio.open(
@@ -293,29 +302,23 @@ def save_preview(mosaic_path: pathlib.Path) -> None:
 
     with rasterio.open(mosaic_path) as src:
         w, h = src.width, src.height
-        # Downsample if large
-        scale = min(1, 2000 / max(w, h))
+        scale = min(1, PREVIEW_MAX_DIM / max(w, h))
         data = src.read(1, out_shape=(int(h * scale), int(w * scale)))
 
     valid = data != NODATA
     ndvi = data
 
-    rgb = numpy.zeros((ndvi.shape[0], ndvi.shape[1], 3), dtype=numpy.uint8)
-    # Blue (water, NDVI<0) -> tan (bare soil, NDVI≈0) -> green (vegetation, NDVI>0.3)
-    rgb[..., 0] = numpy.where(
-        valid, numpy.interp(ndvi, [-1, 0, 0.3, 1], [60, 180, 120, 0]).clip(0, 255), 0
-    )
-    rgb[..., 1] = numpy.where(
-        valid, numpy.interp(ndvi, [-1, 0, 0.3, 1], [100, 160, 200, 60]).clip(0, 255), 0
-    )
-    rgb[..., 2] = numpy.where(
-        valid, numpy.interp(ndvi, [-1, 0, 0.3, 1], [200, 120, 40, 0]).clip(0, 255), 0
-    )
-    rgb[~valid] = [20, 20, 20]
+    rgb = numpy.zeros((*ndvi.shape, 3), dtype=numpy.uint8)
+    for ch, ramp in enumerate((_RAMP_R, _RAMP_G, _RAMP_B)):
+        rgb[..., ch] = numpy.where(
+            valid, numpy.interp(ndvi, _NDVI_STOPS, ramp).clip(0, 255), 0
+        )
+    rgb[~valid] = PREVIEW_NODATA_RGB
 
     out = mosaic_path.with_suffix(".preview.png")
     Image.fromarray(rgb).save(out)
     print(f"  Preview -> {out}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
