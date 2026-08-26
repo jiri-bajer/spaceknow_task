@@ -270,10 +270,10 @@ def process_file(
                 arr=result.ndvi,
                 indexes=1,
                 window=rasterio.windows.Window(
-                    col_off=(result.x - min_x) * TILE_SIZE,
-                    row_off=(result.y - min_y) * TILE_SIZE,
-                    width=TILE_SIZE,
-                    height=TILE_SIZE,
+                    col_off=(result.x - min_x) * TILE_SIZE,  # ty: ignore[unknown-argument]
+                    row_off=(result.y - min_y) * TILE_SIZE,  # ty: ignore[unknown-argument]
+                    width=TILE_SIZE,  # ty: ignore[unknown-argument]
+                    height=TILE_SIZE,  # ty: ignore[unknown-argument]
                 ),
             )
 
